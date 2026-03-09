@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import torch
 import torch.nn as nn
-from transformers import CLIPTextModel, CLIPTokenizer, AutoTokenizer, AutoModel
+from transformers import CLIPTextModel, CLIPTokenizer, AutoTokenizer, AutoModel, LlamaTokenizerFast, PreTrainedTokenizerFast
 from transformers.utils import ModelOutput
 
 from ..constants import TEXT_ENCODER_PATH, TOKENIZER_PATH
@@ -66,9 +66,28 @@ def load_tokenizer(
     if tokenizer_type == "clipL":
         tokenizer = CLIPTokenizer.from_pretrained(tokenizer_path, max_length=77)
     elif tokenizer_type == "llm":
-        tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_path, padding_side=padding_side
-        )
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                tokenizer_path, padding_side=padding_side
+            )
+        except ValueError as error:
+            message = str(error)
+            if "TokenizersBackend" not in message:
+                raise
+
+            if logger is not None:
+                logger.warning(
+                    "Falling back to LlamaTokenizerFast because tokenizer_config.json uses the unsupported TokenizersBackend class name."
+                )
+
+            try:
+                tokenizer = LlamaTokenizerFast.from_pretrained(
+                    tokenizer_path, padding_side=padding_side
+                )
+            except Exception:
+                tokenizer = PreTrainedTokenizerFast.from_pretrained(
+                    tokenizer_path, padding_side=padding_side
+                )
     else:
         raise ValueError(f"Unsupported tokenizer type: {tokenizer_type}")
 

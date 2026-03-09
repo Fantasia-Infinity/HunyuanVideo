@@ -13,9 +13,17 @@ def preprocess_text_encoder_tokenizer(args):
         args.input_dir,
         torch_dtype=torch.float16,
         low_cpu_mem_usage=True,
-    ).to(0)
+    )
 
-    model.language_model.save_pretrained(
+    language_model = getattr(model, "language_model", None)
+    if language_model is None and hasattr(model, "model"):
+        language_model = getattr(model.model, "language_model", None)
+    if language_model is None:
+        raise AttributeError(
+            "Unable to locate the language model inside LlavaForConditionalGeneration."
+        )
+
+    language_model.save_pretrained(
         f"{args.output_dir}"
     )
     processor.tokenizer.save_pretrained(
