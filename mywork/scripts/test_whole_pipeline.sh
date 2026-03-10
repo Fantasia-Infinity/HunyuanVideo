@@ -12,5 +12,5 @@ python sample_video.py \
   --flow-shift 7.0 \
   --flow-reverse \
   --use-cpu-offload \
-  --save-path /projects/prjs1914/DiffusionResults/hunyuantest
+  --save-path /projects/prjs1914/output/DiffusionResults/hunyuantest
 
