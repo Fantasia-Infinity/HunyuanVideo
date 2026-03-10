@@ -7,7 +7,7 @@
 #SBATCH --gpus=1
 #SBATCH --mem=32G
 #SBATCH --time=11:00:00
-#SBATCH --job-name=vae_latent_1024_2179
+#SBATCH --job-name=vae_latent_1_2179_540p
 #SBATCH --output=/home/szhang2/slurm_report/slurm-%j.out
 #SBATCH --error=/home/szhang2/slurm_report/slurm-%j.err
 
@@ -16,14 +16,14 @@ set -euo pipefail
 PROJECT_ROOT="/home/szhang2/AlchemyRepos/HunyuanVideo"
 VENV_PATH="/home/szhang2/venvs/hunyuanvideo-py311/bin/activate"
 VAE_PATH="/projects/prjs1914/models/HunyuanVideo/ckpts/hunyuan-video-t2v-720p/vae"
-OUTPUT_DIR="/projects/prjs1914/output/vae_latent"
+OUTPUT_DIR="/projects/prjs1914/output/vae_latent_540p"
 
 cd "${PROJECT_ROOT}"
 source "${VENV_PATH}"
 
-python mywork/vae_latent_extract/vae_latent_and_reconstruct.py \
+python mywork/vae_latent_extract/vae_latent_and_reconstruct_540p.py \
   --process-all \
-  --start-index 1024 \
+  --start-index 1 \
   --end-index 2179 \
   --latent-only \
   --output-dir "${OUTPUT_DIR}" \

@@ -16,15 +16,16 @@ from hyvideo.utils.file_utils import safe_dir, save_videos_grid
 from hyvideo.vae import load_vae
 
 
-DEFAULT_INPUT = "/projects/prjs1914/input/rescaled_final/0001_fw.mp4"
-DEFAULT_OUTPUT_DIR = "/projects/prjs1914/output/vae_latent"
+# DEFAULT_INPUT = "/projects/prjs1914/input/rescaled_final/0001_fw.mp4"
+DEFAULT_INPUT = "/projects/prjs1914/input/rescaled_final_540p/0001_fw_16by9_960x544_crop_540p.mp4"
+DEFAULT_OUTPUT_DIR = "/projects/prjs1914/output/vae_latent_540p"
 DEFAULT_VAE_PATH = "/projects/prjs1914/models/HunyuanVideo/ckpts/hunyuan-video-t2v-720p/vae"
 DEFAULT_START_INDEX = 1
 DEFAULT_END_INDEX = 2179
 
 
-def video_index_to_path(video_index,size):
-    return f"/projects/prjs1914/input/rescaled_final/{video_index:04d}_fw.mp4"
+def video_index_to_path(video_index):
+    return f"/projects/prjs1914/input/rescaled_final_540p/{video_index:04d}_fw_16by9_960x544_crop_540p.mp4"
 
 
 def _valid_video_length(num_frames):
