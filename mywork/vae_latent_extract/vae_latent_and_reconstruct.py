@@ -117,6 +117,7 @@ def run_vae_on_video(
     resolved_vae_path=None,
     s_ratio=None,
     t_ratio=None,
+    save_reconstruction=True,
 ):
     start_time = time.perf_counter()
     if vae is None:
@@ -141,7 +142,9 @@ def run_vae_on_video(
 
     posterior = vae.encode(prepared_video).latent_dist
     latent = posterior.sample() if sample_posterior else posterior.mode()
-    reconstructed = vae.decode(latent).sample
+    reconstructed = None
+    if save_reconstruction:
+        reconstructed = vae.decode(latent).sample
 
     sample_name = Path(input_video_path).stem
     sample_output_dir = safe_dir(Path(output_dir) / sample_name)
@@ -165,8 +168,9 @@ def run_vae_on_video(
     }
     torch.save(latent_payload, latent_path)
 
-    save_videos_grid(prepared_video.detach().cpu(), str(prepared_input_path), rescale=True, fps=fps)
-    save_videos_grid(reconstructed.detach().cpu(), str(reconstructed_path), rescale=True, fps=fps)
+    if save_reconstruction:
+        save_videos_grid(prepared_video.detach().cpu(), str(prepared_input_path), rescale=True, fps=fps)
+        save_videos_grid(reconstructed.detach().cpu(), str(reconstructed_path), rescale=True, fps=fps)
 
     metadata = {
         "input_video_path": str(input_video_path),
@@ -176,13 +180,14 @@ def run_vae_on_video(
         "sample_posterior": sample_posterior,
         "fps": fps,
         "latent_path": str(latent_path),
-        "prepared_input_path": str(prepared_input_path),
-        "reconstructed_path": str(reconstructed_path),
+        "prepared_input_path": str(prepared_input_path) if save_reconstruction else None,
+        "reconstructed_path": str(reconstructed_path) if save_reconstruction else None,
         "prepared_video_shape": list(prepared_video.shape),
         "latent_shape": list(latent.shape),
-        "reconstructed_shape": list(reconstructed.shape),
+        "reconstructed_shape": list(reconstructed.shape) if reconstructed is not None else None,
         "spatial_compression_ratio": s_ratio,
         "time_compression_ratio": t_ratio,
+        "saved_reconstruction": save_reconstruction,
         "elapsed_seconds": time.perf_counter() - start_time,
         **prep_metadata,
     }
@@ -201,6 +206,7 @@ def process_video_range(
     sample_posterior=False,
     enable_tiling=True,
     skip_missing=True,
+    save_reconstruction=True,
 ):
     batch_start_time = time.perf_counter()
     vae, resolved_vae_path, s_ratio, t_ratio, resolved_device = initialize_vae(
@@ -232,6 +238,7 @@ def process_video_range(
             resolved_vae_path=resolved_vae_path,
             s_ratio=s_ratio,
             t_ratio=t_ratio,
+            save_reconstruction=save_reconstruction,
         )
         all_metadata.append(metadata)
         print(
@@ -270,6 +277,7 @@ def parse_args():
     parser.add_argument("--start-index", type=int, default=DEFAULT_START_INDEX, help="Start index for batch video processing.")
     parser.add_argument("--end-index", type=int, default=DEFAULT_END_INDEX, help="End index for batch video processing.")
     parser.add_argument("--strict-missing", action="store_true", help="Fail instead of skipping when a video in the batch range is missing.")
+    parser.add_argument("--latent-only", action="store_true", help="Only save latent and metadata, skipping VAE decode and reconstructed video outputs.")
     return parser.parse_args()
 
 
@@ -286,6 +294,7 @@ def main():
             sample_posterior=args.sample_posterior,
             enable_tiling=not args.disable_tiling,
             skip_missing=not args.strict_missing,
+            save_reconstruction=not args.latent_only,
         )
         print(json.dumps(summary, indent=2))
     else:
@@ -297,6 +306,7 @@ def main():
             device=args.device,
             sample_posterior=args.sample_posterior,
             enable_tiling=not args.disable_tiling,
+            save_reconstruction=not args.latent_only,
         )
         print(json.dumps(metadata, indent=2))
 
