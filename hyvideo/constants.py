@@ -45,7 +45,8 @@ PROMPT_TEMPLATE_ENCODE_VIDEO = (
     "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|>"
 )  
 
-NEGATIVE_PROMPT = "Aerial view, aerial view, overexposed, low quality, deformation, a poor composition, bad hands, bad teeth, bad eyes, bad limbs, distortion"
+# NEGATIVE_PROMPT = "Aerial view, aerial view, overexposed, low quality, deformation, a poor composition, bad hands, bad teeth, bad eyes, bad limbs, distortion"
+NEGATIVE_PROMPT = "overexposed, low quality, deformation, a poor composition, bad hands, bad teeth, bad eyes, bad limbs, distortion" 
 
 PROMPT_TEMPLATE = {
     "dit-llm-encode": {
