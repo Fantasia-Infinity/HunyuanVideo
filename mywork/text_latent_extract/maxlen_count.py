@@ -1,8 +1,8 @@
 import os
 
-example_input_file = "/projects/prjs1914/input/qwen_describe/0001_fw.txt"
+# example_input_file = "/projects/prjs1914/input/qwen_describe/0001_fw.txt"
 
-def index_to_file_path(index, input_dir="/projects/prjs1914/input/qwen_describe"):
+def index_to_file_path(index, input_dir="/projects/prjs1914/input/qwen_describe_shorten"):
     return os.path.join(input_dir, f"{index:04d}_fw.txt")
 
 
