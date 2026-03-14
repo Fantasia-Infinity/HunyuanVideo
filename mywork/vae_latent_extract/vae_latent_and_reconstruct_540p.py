@@ -185,6 +185,8 @@ def run_vae_on_video(
         "reconstructed_path": str(reconstructed_path) if save_reconstruction else None,
         "prepared_video_shape": list(prepared_video.shape),
         "latent_shape": list(latent.shape),
+        "posterior_mean_shape": list(posterior.mean.shape),
+        "posterior_logvar_shape": list(posterior.logvar.shape),
         "reconstructed_shape": list(reconstructed.shape) if reconstructed is not None else None,
         "spatial_compression_ratio": s_ratio,
         "time_compression_ratio": t_ratio,

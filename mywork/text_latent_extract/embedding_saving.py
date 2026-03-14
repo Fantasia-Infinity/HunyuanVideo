@@ -1,7 +1,9 @@
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
+import time
 
 import torch
 
@@ -10,16 +12,33 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
 	sys.path.insert(0, str(REPO_ROOT))
 
+
+def _default_model_base():
+	project_ckpts = Path("/projects/prjs1914/models/HunyuanVideo/ckpts")
+	if project_ckpts.exists():
+		return str(project_ckpts)
+	return str(REPO_ROOT / "ckpts")
+
+
+DEFAULT_MODEL_BASE = _default_model_base()
+os.environ.setdefault("MODEL_BASE", DEFAULT_MODEL_BASE)
+
 from hyvideo.constants import NEGATIVE_PROMPT, PROMPT_TEMPLATE
 from hyvideo.text_encoder import TextEncoder
 
 
-EXAMPLE_INPUT_FILE = "/projects/prjs1914/input/qwen_describe/0001_fw.txt"
+EXAMPLE_INPUT_FILE = "/projects/prjs1914/input/qwen_describe_shorten/0001_fw.txt"
+DEFAULT_INPUT_TEMPLATE = "/projects/prjs1914/input/qwen_describe_shorten/{index:04d}_fw.txt"
 DEFAULT_OUTPUT_DIR = "/projects/prjs1914/output/hunyuan_text_embeddings"
 DEFAULT_PROMPT_TEMPLATE = "dit-llm-encode"
 DEFAULT_PROMPT_TEMPLATE_VIDEO = "dit-llm-encode-video"
 SHARED_NEGATIVE_FILENAME = "shared_negative_prompt_artifacts.pt"
 SHARED_NEGATIVE_SUMMARY_FILENAME = "shared_negative_prompt_artifacts_summary.json"
+
+
+DEFAULT_TEXT_ENCODER_PRECISION = "fp16"
+DEFAULT_TEXT_LEN = 30
+
 
 
 def _default_device():
@@ -344,6 +363,7 @@ def save_text_encoder_artifacts_from_file(
 	output_dir=DEFAULT_OUTPUT_DIR,
 	data_type="video",
 	negative_prompt=NEGATIVE_PROMPT,
+	save_encoder_artifacts=False,
 	device=None,
 	text_encoder_precision=None,
 	text_encoder_precision_2=None,
@@ -354,6 +374,7 @@ def save_text_encoder_artifacts_from_file(
 	hidden_state_skip_layer=2,
 	apply_final_norm=False,
 ):
+	start_time = time.perf_counter()
 	prompt = _read_prompt_text(input_file)
 	encoders = build_hunyuan_text_encoders(
 		device=device,
@@ -385,15 +406,16 @@ def save_text_encoder_artifacts_from_file(
 		"negative_prompt": negative_prompt,
 		"data_type": data_type,
 		"shared_negative_prompt_artifacts": shared_negative_paths,
-		"encoders": {},
 	}
-	for encoder_name, text_encoder in encoders.items():
-		payload["encoders"][encoder_name] = collect_text_encoder_artifacts(
-			text_encoder=text_encoder,
-			prompt=prompt,
-			data_type=data_type,
-			device=device or text_encoder.device,
-		)
+	if save_encoder_artifacts:
+		payload["encoders"] = {}
+		for encoder_name, text_encoder in encoders.items():
+			payload["encoders"][encoder_name] = collect_text_encoder_artifacts(
+				text_encoder=text_encoder,
+				prompt=prompt,
+				data_type=data_type,
+				device=device or text_encoder.device,
+			)
 	positive_pipeline_inputs = build_pipeline_ready_text_conditions(
 		encoders=encoders,
 		prompt=prompt,
@@ -421,13 +443,59 @@ def save_text_encoder_artifacts_from_file(
 		json.dumps(_summarize_value(payload), indent=2),
 		encoding="utf-8",
 	)
+	elapsed_seconds = time.perf_counter() - start_time
 
 	return {
 		"input_file": payload["input_file"],
 		"output_dir": str(sample_output_dir),
 		"tensor_output_path": str(tensor_output_path),
 		"summary_output_path": str(summary_output_path),
-		"encoders": list(payload["encoders"].keys()),
+		"encoders": list(payload.get("encoders", {}).keys()),
+		"save_encoder_artifacts": save_encoder_artifacts,
+		"elapsed_seconds": elapsed_seconds,
+	}
+
+
+def save_text_encoder_artifacts_for_range(
+	start_index,
+	end_index,
+	input_template=DEFAULT_INPUT_TEMPLATE,
+	skip_missing=True,
+	**kwargs,
+):
+	batch_start_time = time.perf_counter()
+	results = []
+	skipped = []
+	for video_index in range(start_index, end_index + 1):
+		input_file = input_template.format(index=video_index)
+		input_path = Path(input_file)
+		if not input_path.exists():
+			if skip_missing:
+				skipped.append(str(input_path))
+				continue
+			raise FileNotFoundError(f"Prompt file not found: {input_path}")
+
+		result = save_text_encoder_artifacts_from_file(
+			input_file=str(input_path),
+			**kwargs,
+		)
+		result["video_index"] = video_index
+		results.append(result)
+	total_elapsed_seconds = time.perf_counter() - batch_start_time
+	average_elapsed_seconds = (
+		total_elapsed_seconds / len(results) if results else 0.0
+	)
+
+	return {
+		"start_index": start_index,
+		"end_index": end_index,
+		"input_template": input_template,
+		"processed": len(results),
+		"skipped": len(skipped),
+		"total_elapsed_seconds": total_elapsed_seconds,
+		"average_elapsed_seconds": average_elapsed_seconds,
+		"results": results,
+		"skipped_files": skipped,
 	}
 
 
@@ -436,14 +504,19 @@ def parse_args():
 		description="Save HunyuanVideo text encoder embeddings and related artifacts from a prompt text file."
 	)
 	parser.add_argument("--input-file", default=EXAMPLE_INPUT_FILE, help="Path to the input prompt text file.")
+	parser.add_argument("--input-template", default=DEFAULT_INPUT_TEMPLATE, help="Template used for batch mode. Example: /path/{index:04d}_fw.txt")
+	parser.add_argument("--start-index", type=int, default=None, help="Start video index for batch mode.")
+	parser.add_argument("--end-index", type=int, default=None, help="End video index for batch mode.")
+	parser.add_argument("--skip-missing", action="store_true", help="Skip missing prompt files in batch mode instead of failing.")
 	parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help="Directory used to save the extracted artifacts.")
 	parser.add_argument("--data-type", default="video", choices=["image", "video"], help="Whether to apply the image or video prompt template for the main LLM encoder.")
 	parser.add_argument("--negative-prompt", default=NEGATIVE_PROMPT, help="Negative prompt used to build pipeline-ready unconditional text conditions.")
+	parser.add_argument("--save-encoder-artifacts", action="store_true", help="Also save full per-encoder analysis artifacts, including per-layer hidden states. Disabled by default to keep files smaller and pipeline-focused.")
 	parser.add_argument("--device", default=None, help="Execution device, for example cuda or cpu.")
-	parser.add_argument("--text-encoder-precision", default=None, choices=[None, "fp16", "bf16", "fp32"], help="Precision for the main LLM text encoder. Defaults to fp16 on CUDA and fp32 on CPU.")
-	parser.add_argument("--text-encoder-precision-2", default=None, choices=[None, "fp16", "bf16", "fp32"], help="Precision for the CLIP text encoder. Defaults to fp16 on CUDA and fp32 on CPU.")
-	parser.add_argument("--text-len", type=int, default=256, help="Target prompt token length for the main LLM encoder after template cropping.")
-	parser.add_argument("--text-len-2", type=int, default=77, help="Token length for the CLIP text encoder.")
+	parser.add_argument("--text-encoder-precision", default=DEFAULT_TEXT_ENCODER_PRECISION, choices=[None, "fp16", "bf16", "fp32"], help="Precision for the main LLM text encoder. Defaults to fp16 on CUDA and fp32 on CPU.")
+	parser.add_argument("--text-encoder-precision-2", default=DEFAULT_TEXT_ENCODER_PRECISION, choices=[None, "fp16", "bf16", "fp32"], help="Precision for the CLIP text encoder. Defaults to fp16 on CUDA and fp32 on CPU.")
+	parser.add_argument("--text-len", type=int, default=DEFAULT_TEXT_LEN, help="Target prompt token length for the main LLM encoder after template cropping.")
+	parser.add_argument("--text-len-2", type=int, default=DEFAULT_TEXT_LEN, help="Token length for the CLIP text encoder.")
 	parser.add_argument("--prompt-template", default=DEFAULT_PROMPT_TEMPLATE, choices=list(PROMPT_TEMPLATE), help="Prompt template key for image-mode LLM encoding.")
 	parser.add_argument("--prompt-template-video", default=DEFAULT_PROMPT_TEMPLATE_VIDEO, choices=list(PROMPT_TEMPLATE), help="Prompt template key for video-mode LLM encoding.")
 	parser.add_argument("--hidden-state-skip-layer", type=int, default=2, help="Which intermediate LLM hidden state to expose as the selected embedding. 0 means the last layer.")
@@ -453,21 +526,36 @@ def parse_args():
 
 def main():
 	args = parse_args()
-	result = save_text_encoder_artifacts_from_file(
-		input_file=args.input_file,
-		output_dir=args.output_dir,
-		data_type=args.data_type,
-		negative_prompt=args.negative_prompt,
-		device=args.device,
-		text_encoder_precision=args.text_encoder_precision,
-		text_encoder_precision_2=args.text_encoder_precision_2,
-		text_len=args.text_len,
-		text_len_2=args.text_len_2,
-		prompt_template=args.prompt_template,
-		prompt_template_video=args.prompt_template_video,
-		hidden_state_skip_layer=args.hidden_state_skip_layer,
-		apply_final_norm=args.apply_final_norm,
-	)
+	common_kwargs = {
+		"output_dir": args.output_dir,
+		"data_type": args.data_type,
+		"negative_prompt": args.negative_prompt,
+		"save_encoder_artifacts": args.save_encoder_artifacts,
+		"device": args.device,
+		"text_encoder_precision": args.text_encoder_precision,
+		"text_encoder_precision_2": args.text_encoder_precision_2,
+		"text_len": args.text_len,
+		"text_len_2": args.text_len_2,
+		"prompt_template": args.prompt_template,
+		"prompt_template_video": args.prompt_template_video,
+		"hidden_state_skip_layer": args.hidden_state_skip_layer,
+		"apply_final_norm": args.apply_final_norm,
+	}
+	if args.start_index is not None or args.end_index is not None:
+		if args.start_index is None or args.end_index is None:
+			raise ValueError("Both --start-index and --end-index must be provided for batch mode.")
+		result = save_text_encoder_artifacts_for_range(
+			start_index=args.start_index,
+			end_index=args.end_index,
+			input_template=args.input_template,
+			skip_missing=args.skip_missing,
+			**common_kwargs,
+		)
+	else:
+		result = save_text_encoder_artifacts_from_file(
+			input_file=args.input_file,
+			**common_kwargs,
+		)
 	print(json.dumps(result, indent=2))
 
 
